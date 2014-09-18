@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Banana for scale</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <style type="text/css">
+      @import url(http://fonts.googleapis.com/css?family=Yanone+Kaffeesatz);
+      @import url(http://fonts.googleapis.com/css?family=Droid+Serif:400,700,400italic);
+      @import url(http://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic);
+
+      body { font-family: 'Droid Serif'; }
+      h1, h2, h3 {
+        font-family: 'Yanone Kaffeesatz';
+        font-weight: normal;
+      }
+      .remark-code, .remark-inline-code { font-family: 'Ubuntu Mono'; }
+    </style>
+  </head>
+  <body>
+    <textarea id="source">
+
+background-image: url(images/banana-scale.png)
+
+---
+
+class: center, middle
+
+# Banana for Scale
+
+Some lessons learnt, and why bananas may not help.
+
+[Albert de Jongh](https://www.linkedin.com/in/albertdejongh) and [Chris Oloff](http://twitter.com/chrisoloff)
+
+SPIN, 17 September 2014
+
+---
+
+# Disclaimer
+
+## Please Note
+
+All names, examples, figures and PITAs presented and discussed during this talk
+are anecdotal. Any resemblance of or similarity to real people, systems or
+companies would be accidental.
+
+Sorry to disappoint.
+
+???
+Before we start, audience must understand that even though our experience is
+based on real life projects / situations, all examples presented are
+fictituous.
+
+---
+
+# Scope
+
+- Scaling / Scalability?
+
+???
+Scaling can mean many things / involve many disciplines: Team structure /
+growth, organisational setup, which hardware to choose
+
+--
+- Keeping a transactional system with massive growth afloat operationally
+
+???
+We'll cover just a small fraction of all this (actually based on our
+experience), coming into a situation that has some pressure and unhappiness
+already.
+
+--
+- Technical aspects of scaling
+
+???
+And as we are software engineers / architects, we'll cover technical aspects,
+mainly. But, as may become clear, the greatest technology might be useless if
+applied in the wrong place... thus it's never about technology only.
+
+---
+
+# Some kind of outline
+
+1. Know your metrics
+2. Know your system
+3. Change one thing at a time
+
+---
+
+class: center, middle
+
+# Know your Metrics
+
+--
+
+> A banana added for scale or used as a system of measurement is so much easier
+and less snobby than inches, feet or even the metric system.
+
+Imgur user HowToBeADad on http://imgur.com/gallery/Jrmlt
+
+---
+
+layout: true
+
+# Metrics
+
+---
+
+## Why Metrics?
+
+--
+
+What Matters Actually?
+
+--
+
+Happiness? Happy customers? Happy stakeholders?
+
+???
+Complex systems (like transaction processing systems) are complex... and have
+many stakeholders. If the system breaks under load, everybody will be unhappy
+(except for maybe competitors).
+
+--
+
+Don't make me wait!
+
+???
+Many things influence happiness of our stakeholders, but from an operational /
+scaling / growth perspective, having to wait (or timeout with an error) is
+BAAAAD.
+
+---
+
+## Is anybody waiting?
+
+--
+
+How do we know?
+
+--
+
+Metrics?
+
+???
+Interaction: What metrics? Who in the audience has metrics? (Probably the majority won't have any / won't know)
+Yes, there are always metrics of sorts...
+
+--
+
+Logs?
+
+???
+Let's check log files
+
+---
+
+## This is how we roll (Demo)
+
+???
+This slide is about the log rolling demo
+Show logs of a fictitious server, including response times: Some may look okay,
+others not, maybe we see some errors (stack traces) as well. All in all, it
+seems the logs contain the information we need.
+
+Now show logs of a server with much higher requests per second. Imagine 20 MB
+of logs per second. And it's a clustered environment, so 20MB per second times
+number of hosts...
+
+Tools that aggregate data from log files might help, there are even open source
+one's that do that, e.g. "logstash" and http://www.elasticsearch.org/overview/kibana/ ... good idea to use!
+
+But... does it help with metrics? Let's see... we can most likely get the
+*average response time* via such a tool.
+
+(the fictituous server can maybe show the average response time on a uri?)
+
+...
+
+---
+
+## The Forest for the Trees
+
+We need meaningful metrics
+
+--
+
+- Average response time?
+
+???
+If the average response time is *good enough*, then everybody should be happy.
+
+But the average becomes meaningless over time: If something started going wrong
+(and users started screaming) 2 minutes ago, the average response time won't
+indicate anything bad, until poor performance affects the average (of maybe a
+very long time).
+
+--
+
+Example: Since the last restart of the server 97267 seconds ago, we received
+1166409 requests, and in the average a request took 863ms.
+
+???
+Conclusion: we need recency! What was the response time *in the last
+minute(s)*?
+
+--
+
+We need *recency*.
+
+???
+But there is another issue, consider this example:
+
+--
+
+*Average* response time is 185ms. Sounds acceptable!
+
+--
+
+... Out of 1000 requests, 980 of them took 25ms, and 20 took 8000ms.
+
+???
+Those 20 requests are an issue! And just with an average, we won't see that.
+Solution: percentiles
+
+--
+
+We need *percentiles*.
+
+---
+
+![percentiles](images/percentile-80.gif)
+
+---
+
+## Recency and Percentiles
+
+- reservoir sampling
+- forward decaying priority sampling
+
+--
+
+... we don't want to implement that ourselves
+
+--
+
+... rather use libraries smart people have created. Thanks, Coda Hale!
+
+[Metrics Library](https://github.com/dropwizard/metrics) (For Java, many ports available)
+
+--
+
+Highly recommended: [Metrics, Metrics Everywhere](https://www.youtube.com/watch?v=czes-oa0yik)
+
+???
+Metrics, Metrics Everywhere: It's about linking code with business value (and
+explaining important aspects of metrics in detail)
+
+---
+
+background-image: url(images/graph-1.png)
+background-size: 25%
+
+--
+
+Record request rates and response times over time
+
+--
+
+... now you can compare
+
+???
+We'll see why this is so important later.
+
+---
+
+layout: false
+class: center, middle
+
+# Know your System
+
+---
+
+layout: true
+
+# Know your System
+
+---
+
+![faster](images/fasterbanjo.jpg)
+
+???
+
+At some stage:  you're going to get the call that the monster is slow and or unstable
+
+What can you do?
+
+There are many things you can tweak in a big system.  I've listed some that came to mind.
+
+---
+
+## Paddle faster
+
+* HTTP connection queue
+--
+
+* HTTP thread pools
+--
+
+* OS TCP/IP stack 
+--
+
+* Camel thread pools
+--
+
+* JDBC connection pools
+--
+
+* MDB pool size
+--
+
+* Bean caches
+--
+
+* Hibernate caches
+--
+
+* HTTP client pool size
+--
+
+* Message broker
+--
+
+* Database
+--
+
+* Heap sizes
+--
+
+* Garbage collection
+--
+
+* JVM flags
+
+---
+
+![monitoring wall](images/monitoring.jpg)
+
+???
+Let's go through some examples of things that went horribly wrong, and see if we can learn something from them...
+
+We were trying to get everyone to correctly setup their monitoring software.
+
+Some well-meaning soul thought setting the Glassfish transaction monitoring to LOW will help.  
+And it does - mostly - how else can we get data for our metrics?
+
+**What do you think happened?**
+
+---
+
+## Glassfish monitoring
+
+Hmmm?
+
+```java
+"p: thread-pool-1; w: 179" daemon prio=3 tid=0x00000000014c7000 nid=0x58b1 
+waiting for monitor entry [0xfffffd7dff2f0000]
+   java.lang.Thread.State: BLOCKED (on object monitor)
+        at java.util.Vector.addElement(Vector.java:572)
+*        - waiting to lock <0xfffffd7e20b52080> (a java.util.Vector)
+        at com.sun.enterprise.distributedtx.J2EETransactionManagerImpl
+             .begin(J2EETransactionManagerImpl.java:959)
+        ...
+```
+
+???
+Almost all threads that had anything to do with transactions were blocked
+
+---
+
+## Glassfish monitoring
+
+For one vector
+
+```java
+"p: thread-pool-1; w: 174" daemon prio=3 tid=0x000000000ae81800 nid=0x58ab 
+runnable [0xfffffd7dff9f8000]
+   java.lang.Thread.State: RUNNABLE
+        at java.util.Vector.indexOf(Vector.java:361)
+*        - locked <0xfffffd7e20b52080> (a java.util.Vector)
+        at java.util.Vector.indexOf(Vector.java:335)
+        at java.util.Vector.removeElement(Vector.java:594)
+*        - locked <0xfffffd7e20b52080> (a java.util.Vector)
+        at java.util.Vector.remove(Vector.java:745)
+        at com.sun.enterprise.distributedtx.J2EETransactionManagerImpl
+             .monitorTxCompleted(J2EETransactionManagerImpl.java:1384)
+        ...
+```
+
+???
+Transaction monitoring was synchronizing on one counter to count transactions
+
+---
+
+## Lessons
+
+What exactly does LOW mean?
+
+--
+
+Complexity comes at a price
+
+--
+
+At high speeds wind resistance counts!
+
+---
+
+![id book](images/id.jpg)
+
+???
+Someone with an identity crisis... 
+
+Acute accent to be added on the "i"
+
+Database constraint violations in the logs, and they were getting more and more frequent.
+
+It was quite strange since the system was using Hibernate for persistence
+
+Sequence based approach for the ids.
+
+It is not possible for the ids to clash.
+
+**Or is it?**
+
+**Can you guess what happened here... **
+
+Using integers for its id field.
+
+Single sequence used across different tables.
+
+"holes" in the range of ids in the different tables.  
+
+And, fortunately, only one of the tables really persisted
+
+---
+
+## Identity theft
+
+Integer maximum value 2^31-1 = 2147483647
+
+???
+Strictly speaking you have twice as long - if the integer wraps into negative.  And then the fun starts!
+
+--
+
+At 10 TPS:  59652 hours (6.8 years)
+
+--
+
+At 200 TPS:  2982 hours (124 days)
+
+--
+
+Whereas maximum value of a long is 9223372036854775807
+
+--
+
+At 200 TPS that will last... 1462356043 years
+
+(safely much longer than you will have to support it!)
+
+---
+
+## Lessons
+
+They grow up so quickly
+
+--
+
+Don't blindly trust third-party libraries
+
+---
+
+![garbage](images/garbageduplo.jpg)
+
+???
+This is a favourite of mine - good old garbage collection in Java
+
+**How many people have tried tuning garbage collectors in anger?**
+
+**How many of you actually made it better?**
+
+GC is especially hard to tune correctly if you have app with high memory churn
+
+---
+
+## Garbage collection
+
+Heap too small
+
+???
+Very frequent collections - stop-the-world type
+
+--
+
+Large heap
+
+???
+Deferring the obvious...  and now you have a huge stop-the-world pause
+
+--
+
+Swap to disk
+
+???
+Even worse - if you're oversubscribing memory in the system it may start swapping during GC
+
+Then it becomes really really slow
+
+--
+
+Collector implementation and parameters
+
+???
+Change one thing at a time, and study the results
+
+---
+
+## Lessons in garbage collecting
+
+Understand your application's eating patterns.  Maybe send it on a diet too.
+
+--
+
+Experiment with collectors and GC settings in a safe environment
+
+--
+
+Have verbose gc logs switched on (with some other switches) - and analyze it
+
+
+---
+
+![chicken](images/chicken-virtualization.jpg)
+
+???
+Hard to find a picture that illustrates virtualization
+
+---
+
+## Virtualization
+
+23:02:50 up 8 days, 11:01,  6 users,  load average: 1.01, 1.00, 0.81
+
+???
+**What do those numbers mean?**
+
+Know how many CPUs the system has
+
+--
+
+What does it mean when the CPU is virtual?
+
+--
+
+And, if the CPU allocation is dynamically scaled?
+
+---
+
+## Virtualization lessons
+
+Really really understand your virtualization technology
+
+--
+
+Do not use dynamically scaled resources
+
+--
+
+Unless of course, you have unlimited hardware ;-)
+
+---
+
+![retro drive](images/retrodrive.jpg)
+
+"...at least ten times better than floppies..."
+
+???
+The system mysteriously started slowing down more and more
+
+All the normal culprits were investigated - could not really find the cause
+
+Eventually some thread dumps were produced
+
+---
+
+## Glassfish transaction journal
+
+```java
+"p: thread-pool-1; w: 273" daemon prio=3 tid=0x000000000cc35000 nid=0x7e3c1 
+waiting for monitor entry [0xfffffd7fdbd73000]
+  java.lang.Thread.State: BLOCKED (on object monitor)
+  at com.sun.jts.CosTransactions.LogFile.write(LogFile.java:157)
+*  waiting to lock <0xfffffd7e810a6ff8> (a com.sun.jts.CosTransactions.LogFile)
+  at com.sun.jts.CosTransactions.CoordinatorLog.formatLogRecords(CoordinatorLog.java:1082)
+  locked <0xfffffd7e7b645ef8> (a com.sun.jts.CosTransactions.CoordinatorLog)
+  at com.sun.jts.CosTransactions.CoordinatorLog.write(CoordinatorLog.java:535)
+  at com.sun.jts.CosTransactions.TransactionState.setState(TransactionState.java:780)
+  at com.sun.jts.CosTransactions.TopCoordinator.commit(TopCoordinator.java:2134)
+```
+
+???
+
+**Anyone guess what went wrong here?**
+
+Filesystem of transaction log shared with application's log files
+
+And...  they were running through a lot of logs (remember Chris' demo?)
+
+It was actually holding up the transaction logs to be committed to disk
+
+---
+
+## Lessons
+
+Systems can share resources in surprising ways
+
+--
+
+DevOps is a reality
+
+---
+
+![file handles](images/filehandle.jpg)
+
+???
+This time the call was more serious
+
+The system just stopped working
+
+---
+
+## Too many open files
+
+```java
+java.io.FileNotFoundException: .../imq/instances/imqbroker/etc/passwd (Too many open files)
+  at java.io.FileInputStream.open(Native Method)
+  at java.io.FileInputStream.<init>(FileInputStream.java:106)
+  ...
+```
+
+???
+
+Log fragment in the message broker log file
+
+Listed all the open files to see which process was holding on to the handles
+
+It was the Java virtual machine "local attach" mechanism - as in when using tools like jconsole and jvisualvm
+
+We were embarrased to find that it was our JMX metrics collector running on the broker that triggered a bug in the JVM
+
+---
+
+## Lessons?
+
+Soak test all parts of your application - even the monitoring bits
+
+---
+
+![queue](images/queue.jpg)
+
+
+???
+
+Message queues are really simple things, yes?
+
+**What exactly does the queue length tell you?**
+
+Both messages that still need to be consumed AND messages that have been picked up but not committed
+
+Recently had this very strange problem where messages would look as if they are stuck on a queue, but not all the consumers would be busy
+
+Had us flummoxed for a while - until we realized that you can set up a "consumer flow limit", or prefetch message count
+
+This is the number of messages that will be predelivered to a consumer in a batch
+
+In this case the few busy consumers had prefetched all the messages off the queue - and the other consumers were idle
+
+However the first message in the prefetched list was poisonous, and the consumer dealt with it badly
+
+It held up all the messages in the prefetched list - and they were stuck forever
+
+A bit like standing in the queue at Pick 'n Pay and the person right at the front has an item without a price
+
+---
+
+## Lessons
+
+You have to understand the most mundane things
+
+---
+
+## Cheap tools
+
+--
+
+Thread dumps - the poor man's production profiler
+
+--
+
+Print the garbage collection stats
+
+--
+
+Be proactive - look at the system when it is busy
+
+--
+
+Replaying?
+
+--
+
+Centralized view of everything (logs, errors, metrics)
+
+---
+
+layout: false
+class: center, middle
+
+# Change One Thing at a Time
+
+---
+
+layout: true
+
+# Change One Thing at a Time
+
+---
+
+Simple rule
+
+???
+As last item on the agenda, something more relaxing.
+
+--
+
+... we broke it.
+
+???
+It sounds so simple... why is it worth mentioning?
+Let's look at an (again purely fictituous) example.
+
+---
+
+> "The bean pool is at its limit under load, let's double it. It will certainly
+reduce response times in the average."
+
+--
+
+> "We can certainly reduce garbage collection waits by adding 50% more GC
+threads. As there's enough CPU, there is no risk here!"
+
+--
+
+We make the changes together (no time to lose!) Just one maintenance window a
+day!)...
+
+--
+
+and response times degrade even more. :(
+
+--
+
+All we can do is an emergency rollback.
+
+--
+
+And we are as smart (or dumb) as before.
+
+???
+The tragic is: We want to make progress, be helpful, and we are pretty damn
+sure that the two changes are low risk and unrelated.
+
+Also: Often we cannot make changes any time in production, we have to wait for
+a maintenance window, adhere to a strict process, thus "batching up" production
+changes seems useful!
+
+---
+
+Cause and Effect...
+
+--
+
+are often not what we expect.
+
+--
+
+Assumptions is the mother of all ____ups.
+
+---
+
+layout: false
+# Some kind of outline
+
+1. Know your metrics
+2. Know your system
+3. Change one thing at a time
+
+---
+
+class: center, middle
+# Questions?
+
+    </textarea>
+    <!-- online URL is http://gnab.github.io/remark/downloads/remark-latest.min.js -->
+    <script src="remark-latest.min.js" type="text/javascript">
+    </script>
+    <script type="text/javascript">
+      var slideshow = remark.create();
+    </script>
+  </body>
+</html>
